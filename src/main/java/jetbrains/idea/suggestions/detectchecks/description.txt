@@ -1,0 +1,112 @@
+Hello.
+
+Sometimes I use code like this to check some conditions.
+
+    public static <E extends Throwable> void check(boolean assumption, Supplier<E> exceptionSupplier) throws E {
+        requireNonNull(exceptionSupplier);
+        if (!assumption) {
+            throw exceptionSupplier.get();
+        }
+    }
+As you can see. The code throws a predefined exception if assumption is false.
+Nothing special actually. However it shortens written code, in favor of its readability.
+
+As an example.
+
+The code
+    public static void methodOne(SomeObject someObject) {
+        if (someObject == null) {
+            throw new IllegalArgumentException("someObject must be defined");
+        }
+        if (someObject.aMethod() == null) {
+            throw new IllegalArgumentException("someObject must be defined");
+        }
+        doWithObject(someObject.aMethod());
+    }
+
+can be rewritten to ...
+    public static void methodOne(SomeObject someObject) {
+        check(someObject != null, () -> new IllegalArgumentException("someObject must be defined"));
+        check(someObject.aMethod() != null, () -> new IllegalArgumentException("aMethod must not return null"));
+        doWithObject(someObject.aMethod());
+    }
+
+however I encountered a drawback doing so.
+    public static void methodOne(SomeObject someObject) {
+        check(someObject != null, () -> new IllegalArgumentException("someObject must be defined"));
+        doWithObject(someObject.aMethod());
+    }
+
+line doWithObject(someObject.aMethod()); here is highlighted gray with warning of NPE although someObject here is
+surely not null
+
+
+Another example with methods
+
+    public static <K, E extends Enum<E>> Map<K, E> immutableEnumMap(Class<E> clazz, Function<E, K> keyFunction) {
+        check(clazz != null, () -> new IllegalArgumentException("enum class is not defined"));
+        check(keyFunction != null, () -> new IllegalArgumentException("key function is not defined"));
+        requireNonNull(clazz);
+        requireNonNull(keyFunction);
+        return unmodifiableMap(stream(clazz.getEnumConstants()).collect(toMap(keyFunction, identity(), (e, e2) -> {
+            throw new IllegalStateException(
+                    "Key must be unique " + e + " " + keyFunction
+                            .apply(e));
+        })));
+    }
+
+    public static <K, E extends Enum<E>> Map<K, E> mutableEnumMap(Class<E> clazz, Function<E, K> keyFunction) {
+        check(clazz != null, () -> new IllegalArgumentException("enum class is not defined"));
+        check(keyFunction != null, () -> new IllegalArgumentException("key function is not defined"));
+        requireNonNull(clazz);
+        requireNonNull(keyFunction);
+        return stream(clazz.getEnumConstants()).collect(toMap(keyFunction, identity(), (e, e2) -> {
+            throw new IllegalStateException(
+                    "Key must be unique " + e + " " + keyFunction
+                            .apply(e));
+        }));
+    }
+
+immutableEnumMap and mutableEnumMap methods create immutable and mutable maps accordingly
+
+    public static void methodWithMaps() {
+        immutableEnumMap(AEnum.class, Enum::name).put("A", AEnum.C); // <--- ide gives a warning  Immutable object is modified
+        mutableEnumMap(AEnum.class, Enum::name).put("A", AEnum.C); // <--- ide gives no warnings
+    }
+
+and IDE sees that difference although return type is Map<K, E> in both cases
+
+
+I understand that in order to analyse a situation with
+
+    public static void methodOne(SomeObject someObject) {
+        check(someObject != null, () -> new IllegalArgumentException("someObject must be defined"));
+        check(someObject.aMethod() != null, () -> new IllegalArgumentException("aMethod must not return null"));
+        doWithObject(someObject.aMethod());
+    }
+
+IDE have to go deeper to understand that null value never reaches the line  doWithObject(someObject.aMethod());
+nevertheless it does so in situation with the method described above.
+
+    public static void methodWithMaps() {
+        immutableEnumMap(AEnum.class, Enum::name).put("A", AEnum.C); // <--- ide gives a warning  Immutable object is modified
+        mutableEnumMap(AEnum.class, Enum::name).put("A", AEnum.C); // <--- ide gives no warnings
+    }
+
+I Suggest you either considering to make it possible for ide to understand
+
+    public static void methodOne(SomeObject someObject) {
+        check(someObject != null, () -> new IllegalArgumentException("someObject must be defined"));
+        check(someObject.aMethod() != null, () -> new IllegalArgumentException("aMethod must not return null"));
+        doWithObject(someObject.aMethod());
+    }
+that in that case doWithObject(someObject.aMethod()); someObject is not null and someObject.aMethod() as well
+or give a answer that it is not going to done(in the nearest future)
+
+Probably there is another way to provide IDE with this functionality - (predefined annotations etc.)
+
+Thank you  in advance.
+see https://github.com/DarrylZero/idea_suggestion for details.
+
+
+
